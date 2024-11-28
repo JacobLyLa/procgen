@@ -6,6 +6,7 @@ import gym3
 from gym3.libenv import CEnv
 import numpy as np
 from .builder import build
+import struct
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -245,7 +246,58 @@ class ProcgenGym3Env(BaseProcgenEnv):
             }
         super().__init__(num, env_name, options, **kwargs)
         
+    def act(self, ac):
+        """
+        Override the act method to fetch and print player and enemy positions and velocities after each action.
+        """
+        # Perform the original action
+        super().act(ac)
         
+        if self.options['env_name'] != 'coinrun':
+            return
+        # Fetch the internal state
+        state = self.get_state()[0]
+
+        # Define offsets based on updated serialization
+        # Agent x (0-4), y (4-8), vx_player (8-12)
+        player_pos_offset = 0
+        player_vel_offset = 8  # After agent x and y
+        num_enemies_offset = 12  # After agent's vx
+
+        # Ensure state has enough bytes for agent data and number of enemies
+        if len(state) < num_enemies_offset + 4:
+            print("State buffer too small for agent data and number of enemies.")
+            return
+
+        # Unpack player x, y, and vx
+        x, y, vx_player = struct.unpack('<fff', state[player_pos_offset:player_vel_offset + 4])
+
+        # Unpack number of enemies
+        num_enemies = struct.unpack('<i', state[num_enemies_offset:num_enemies_offset + 4])[0]
+
+        # Initialize list to hold enemy positions and velocities
+        enemies = []
+        
+        # Each enemy has x, y, vx (12 bytes per enemy)
+        enemy_data_start = num_enemies_offset + 4
+        expected_length = enemy_data_start + num_enemies * 12
+
+        if len(state) < expected_length:
+            print(f"State buffer too small for {num_enemies} enemies. Expected {expected_length} bytes, got {len(state)} bytes.")
+            return
+
+        for i in range(num_enemies):
+            start = enemy_data_start + i * 12
+            ex, ey, evx = struct.unpack('<fff', state[start:start + 12])
+            # Only include if both x and y are less than 6.7 units away from the player
+            if abs(ex - x) < 6.7 and abs(ey - y) < 6.7:
+                enemies.append((ex, ey, evx))
+        
+        print(f'Player position - x: {x:.2f}, y: {y:.2f}, vx: {vx_player:.2f}, num_enemies: {len(enemies)}/{num_enemies}')
+        for enemy_idx, (ex, ey, evx) in enumerate(enemies):
+            enemy_type = 'SAW' if evx == 0.0 else 'ENEMY'
+            print(f'  Enemy {enemy_idx + 1}: Type: {enemy_type}, x: {ex:.2f}, y: {ey:.2f}, vx: {evx:.2f}')
+
 class ToBaselinesVecEnv(gym3.ToBaselinesVecEnv):
     metadata = {
         'render.modes': ['human', 'rgb_array'],

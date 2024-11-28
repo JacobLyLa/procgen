@@ -5,6 +5,7 @@
 #include "../mazegen.h"
 #include "../cpp-utils.h"
 #include "../qt-utils.h"
+#include <vector>
 
 const std::string NAME = "coinrun";
 
@@ -38,6 +39,7 @@ const int NUM_GROUND_THEMES = (int)(GROUND_THEMES.size());
 class CoinRun : public BasicAbstractGame {
   public:
     std::shared_ptr<Entity> goal;
+    std::vector<std::shared_ptr<Entity>> enemies;
     float last_agent_y = 0.0f;
     int wall_theme = 0;
     bool has_support = false;
@@ -246,7 +248,8 @@ class CoinRun : public BasicAbstractGame {
     }
 
     void create_saw_enemy(int x, int y) {
-        add_entity(x + .5, y + .5, 0, 0, .5, SAW);
+        auto ent = add_entity(x + .5, y + .5, 0.0f, 0.0f, .5f, SAW);
+        enemies.push_back(ent);
     }
 
     void create_enemy(int x, int y) {
@@ -255,6 +258,7 @@ class CoinRun : public BasicAbstractGame {
         ent->image_type = ENEMY1;
         ent->render_z = 1;
         choose_random_theme(ent);
+        enemies.push_back(ent);
     }
 
     void create_crate(int x, int y) {
@@ -414,6 +418,8 @@ class CoinRun : public BasicAbstractGame {
     }
 
     void game_reset() override {
+        enemies.clear();
+
         BasicAbstractGame::game_reset();
 
         gravity = 0.2f;
@@ -497,17 +503,31 @@ class CoinRun : public BasicAbstractGame {
         last_agent_y = agent->y;
     }
 
-    void serialize(WriteBuffer *b) override {
-        BasicAbstractGame::serialize(b);
-        b->write_float(last_agent_y);
-        b->write_int(wall_theme);
-        b->write_bool(has_support);
-        b->write_bool(facing_right);
-        b->write_bool(is_on_crate);
-        b->write_float(gravity);
-        b->write_float(air_control);
-    }
+   void serialize(WriteBuffer *b) override {
+       b->write_float(agent->x);
+       b->write_float(agent->y);
+       b->write_float(agent->vx);
 
+       size_t num_enemies = enemies.size();
+       b->write_int(static_cast<int>(num_enemies));
+
+       for (const auto& enemy : enemies) {
+           b->write_float(enemy->x);
+           b->write_float(enemy->y);
+           b->write_float(enemy->vx);
+       }
+
+       BasicAbstractGame::serialize(b);
+       b->write_float(last_agent_y);
+       b->write_int(wall_theme);
+       b->write_bool(has_support);
+       b->write_bool(facing_right);
+       b->write_bool(is_on_crate);
+       b->write_float(gravity);
+       b->write_float(air_control);
+   }
+
+    // This wont work anymore
     void deserialize(ReadBuffer *b) override {
         BasicAbstractGame::deserialize(b);
         last_agent_y = b->read_float();
